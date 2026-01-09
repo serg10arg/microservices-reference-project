@@ -27,6 +27,13 @@ public class GatewayConfig {
                         )
                         .uri("lb://order-service")) // 3. Enrutamos al servicio usando Load Balancing (lb)
 
+                .route("item-service", p -> p
+                        .path("/api/items/**")
+                        .filters(f -> f
+                                .requestRateLimiter(c -> c.setRateLimiter(redisRateLimiter()))
+                        )
+                        .uri("lb://item-service"))
+
                 // Aquí agregaríamos más rutas para item-service, product-service, etc.
                 .build();
     }

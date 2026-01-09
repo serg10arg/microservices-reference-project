@@ -37,6 +37,7 @@
         <!-- <module>product-service</module> -->  <!-- Cap 5: Contract Testing -->
         <module>discovery-server</module>
         <module>api-gateway</module>
+        <module>item-service</module>
     </modules>
 
     <properties>
