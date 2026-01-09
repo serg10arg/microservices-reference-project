@@ -30,12 +30,13 @@
             Descomentar a medida que se generen las carpetas.
         -->
         <module>discovery-server</module> <!-- Cap 4: Service Discovery -->
-        <!-- <module>api-gateway</module> -->      <!-- Cap 4: Gateway & Rate Limiting -->
+        <module>api-gateway</module>       <!-- Cap 4: Gateway & Rate Limiting -->
         <!-- <module>item-service</module> -->     <!-- Cap 4: REST Basics -->
         <!-- <module>order-service</module> -->    <!-- Cap 4: Async Messaging & Resilience -->
         <!-- <module>notification-service</module> --> <!-- Cap 4: Event Consumer -->
         <!-- <module>product-service</module> -->  <!-- Cap 5: Contract Testing -->
         <module>discovery-server</module>
+        <module>api-gateway</module>
     </modules>
 
     <properties>

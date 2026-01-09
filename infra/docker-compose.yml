@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  # Redis: Necesario para el Rate Limiting del API Gateway
+  # Fuente:
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    driver: bridge
