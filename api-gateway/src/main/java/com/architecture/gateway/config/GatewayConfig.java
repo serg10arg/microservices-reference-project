@@ -34,6 +34,13 @@ public class GatewayConfig {
                         )
                         .uri("lb://item-service"))
 
+                .route("notification-service", p -> p
+                        .path("/notifications/**")
+                        .filters(f -> f
+                                .requestRateLimiter(c -> c.setRateLimiter(redisRateLimiter()))
+                        )
+                        .uri("lb://notification-service"))
+
                 // Aquí agregaríamos más rutas para item-service, product-service, etc.
                 .build();
     }
