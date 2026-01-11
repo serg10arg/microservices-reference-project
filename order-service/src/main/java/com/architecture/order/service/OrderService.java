@@ -5,6 +5,7 @@ import com.architecture.order.model.Order;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate; // Importación clave para comunicación HTTP
 
 import java.util.UUID;
 
@@ -12,27 +13,45 @@ import java.util.UUID;
 public class OrderService {
 
     private final KafkaTemplate<String, OrderEvent> kafkaTemplate;
+    private final RestTemplate restTemplate; // Cliente HTTP con balanceo de carga
 
-    public OrderService(KafkaTemplate<String, OrderEvent> kafkaTemplate) {
+    // Inyección de dependencias por constructor
+    public OrderService(KafkaTemplate<String, OrderEvent> kafkaTemplate, RestTemplate restTemplate) {
         this.kafkaTemplate = kafkaTemplate;
+        this.restTemplate = restTemplate;
     }
 
     /**
-     * Aplicamos el patrón Circuit Breaker.
-     * Nombre: "inventory" (coincide con application.properties)
-     * Fallback: "fallbackCreateOrder" (método que se ejecuta si hay fallo)
-     * Fuente: Uso de anotación @CircuitBreaker y fallbackMethod
+     * Crea un pedido solo si hay stock disponible.
+     * Protegido por el patrón Circuit Breaker.
+     *
+     * @param order Datos del pedido entrante
+     * @return El pedido procesado o una respuesta de fallback
      */
     @CircuitBreaker(name = "inventory", fallbackMethod = "fallbackCreateOrder")
     public Order createOrder(Order order) {
-        // 1. Simulación de llamada externa a Inventario (Propenso a fallos)
-        // En un caso real, aquí usarías RestTemplate o WebClient
-        simularVerificacionInventario();
 
-        // 2. Lógica normal
+        // 1. Definir la URL usando el Nombre del Servicio (NO localhost)
+        // Gracias a @LoadBalanced y Eureka, "inventory-service" se resuelve dinámicamente a la IP real.
+        // Asumimos que el nombre del producto es el SKU para este ejemplo.
+        String skuCode = order.getProductName();
+        String inventoryUrl = "http://inventory-service/api/inventory/" + skuCode;
+
+        // 2. Llamada Síncrona al Microservicio de Inventario
+        // Uso de RestTemplate para comunicación entre servicios vía Eureka
+        Boolean inStock = restTemplate.getForObject(inventoryUrl, Boolean.class);
+
+        // 3. Validación de Negocio
+        if (Boolean.FALSE.equals(inStock)) {
+            throw new RuntimeException("El producto " + skuCode + " no tiene stock disponible.");
+        }
+
+        // 4. Si hay stock, procedemos con la creación del pedido
         order.setOrderId(UUID.randomUUID().toString());
         order.setStatus("CREATED");
 
+        // 5. Comunicación Asíncrona: Notificar al resto del sistema vía Kafka
+        // Envío de evento al tópico "orders"
         OrderEvent event = new OrderEvent(order.getOrderId(), order.getStatus());
         kafkaTemplate.send("orders", event);
 
@@ -41,24 +60,18 @@ public class OrderService {
     }
 
     // --- Método Fallback ---
-    // IMPORTANTE: Debe tener la misma firma que el original + un parámetro Throwable
+    // Se ejecuta si:
+    // a) El inventory-service está caído (Connection refused).
+    // b) El inventory-service tarda mucho (Timeout).
+    // c) El circuito está ABIERTO por fallos previos.
+    // Implementación de fallback para degradación de servicio.
     public Order fallbackCreateOrder(Order order, Throwable t) {
-        System.out.println("¡CIRCUITO ABIERTO O ERROR! Ejecutando Fallback. Razón: " + t.getMessage());
+        System.err.println("FALLBACK EJECUTADO. Razón: " + t.getMessage());
 
-        // Devolvemos una respuesta "degradada" pero válida, o un aviso de error controlado
         order.setOrderId("00000");
-        order.setStatus("FAILED_INVENTORY_DOWN");
-        // No enviamos evento a Kafka para no ensuciar el sistema
+        // Indicamos que falló no por lógica de negocio, sino por indisponibilidad o error técnico
+        order.setStatus("FAILED_INVENTORY_UNAVAILABLE");
 
         return order;
-    }
-
-    // Método auxiliar para simular fallos (Chaos Engineering casero)
-    private void simularVerificacionInventario() {
-        // Simulamos que el sistema falla el 50% de las veces aleatoriamente
-        if (Math.random() > 0.5) {
-            throw new RuntimeException("El servicio de inventario no responde (Simulado)");
-        }
-        System.out.println("Verificación de inventario exitosa.");
     }
 }
